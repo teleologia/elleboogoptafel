@@ -1,0 +1,192 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boerenbridge Scorecalculator</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: #333;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        input[type="number"], input[type="text"] {
+            width: 80px;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            margin-top: 10px;
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Boerenbridge Scorecalculator</h1>
+        
+        <div>
+            <label for="aantalSpelers">Aantal spelers:</label>
+            <input type="number" id="aantalSpelers" min="3" max="8" value="4">
+            <button onclick="spelOpzetten()">Spel opzetten</button>
+        </div>
+
+        <div id="spelOpzet" style="display: none;">
+            <h2>Voer spelersnamen in:</h2>
+            <div id="spelerNamen"></div>
+            <button onclick="spelStarten()">Spel starten</button>
+        </div>
+
+        <div id="spelVerloop" style="display: none;">
+            <h2>Ronde <span id="rondeNummer">1</span></h2>
+            <table id="scoreTable">
+                <thead>
+                    <tr>
+                        <th>Speler</th>
+                        <th>Bieding</th>
+                        <th>Slagen</th>
+                        <th>Score</th>
+                        <th>Totaal</th>
+                    </tr>
+                </thead>
+                <tbody id="scoreTableBody"></tbody>
+            </table>
+            <button onclick="berekenScores()">Scores berekenen</button>
+            <button onclick="volgendeRonde()">Volgende ronde</button>
+        </div>
+    </div>
+
+    <script>
+        let spelers = [];
+        let scores = [];
+        let rondeNummer = 1;
+
+        function spelOpzetten() {
+            const aantalSpelers = parseInt($('#aantalSpelers').val());
+            if (aantalSpelers < 3 || aantalSpelers > 8) {
+                alert('Voer een aantal tussen 3 en 8 in');
+                return;
+            }
+            
+            let spelerNamenHtml = '';
+            for (let i = 0; i < aantalSpelers; i++) {
+                spelerNamenHtml += `<input type="text" id="speler${i}" placeholder="Speler ${i + 1}"><br>`;
+            }
+            $('#spelerNamen').html(spelerNamenHtml);
+            $('#spelOpzet').show();
+        }
+
+        function spelStarten() {
+            spelers = [];
+            scores = [];
+            for (let i = 0; i < $('#aantalSpelers').val(); i++) {
+                const spelerNaam = $(`#speler${i}`).val() || `Speler ${i + 1}`;
+                spelers.push(spelerNaam);
+                scores.push(0);
+            }
+            updateScoreTable();
+            $('#spelVerloop').show();
+        }
+
+        function updateScoreTable() {
+            let tableHtml = '';
+            for (let i = 0; i < spelers.length; i++) {
+                tableHtml += `
+                    <tr>
+                        <td>${spelers[i]}</td>
+                        <td><input type="number" id="bieding${i}" min="0" max="${getMaxBieding(rondeNummer)}"></td>
+                        <td><input type="number" id="slagen${i}" min="0" max="${getMaxBieding(rondeNummer)}"></td>
+                        <td id="score${i}"></td>
+                        <td id="totaal${i}">${scores[i]}</td>
+                    </tr>
+                `;
+            }
+            $('#scoreTableBody').html(tableHtml);
+            $('#rondeNummer').text(rondeNummer);
+        }
+
+        function getMaxBieding(ronde) {
+            if (ronde <= 7) return ronde;
+            if (ronde >= 8 && ronde <= 10) return 8;
+            return 17 - ronde;
+        }
+
+        function berekenScores() {
+            const biedingen = spelers.map((_, i) => parseInt($(`#bieding${i}`).val()) || 0);
+            const slagen = spelers.map((_, i) => parseInt($(`#slagen${i}`).val()) || 0);
+
+            // Controleer of het totaal aantal geboden slagen niet gelijk is aan het aantal kaarten
+            if (rondeNummer >= 3) {
+                const totaalBiedingen = biedingen.reduce((a, b) => a + b, 0);
+                if (totaalBiedingen === getMaxBieding(rondeNummer)) {
+                    alert('Het totaal aantal geboden slagen mag niet gelijk zijn aan het aantal kaarten!');
+                    return;
+                }
+            }
+
+            $.ajax({
+                url: '/bereken_scores',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    spelers: spelers,
+                    biedingen: biedingen,
+                    slagen: slagen,
+                    rondeNummer: rondeNummer
+                }),
+                success: function(response) {
+                    for (let i = 0; i < spelers.length; i++) {
+                        $(`#score${i}`).text(response.scores[i]);
+                        scores[i] += response.scores[i];
+                        $(`#totaal${i}`).text(scores[i]);
+                    }
+                }
+            });
+        }
+
+        function volgendeRonde() {
+            rondeNummer++;
+            if (rondeNummer > 17) {
+                alert('Spel afgelopen!');
+                return;
+            }
+            updateScoreTable();
+        }
+    </script>
+</body>
+</html>
